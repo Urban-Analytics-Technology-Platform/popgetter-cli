@@ -1,0 +1,17 @@
+[package]
+name = "popgetter_py"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "popgetter"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = {version= "^0.21.0", features=["experimental-async"]}
+pyo3-polars="0.14.0"
+popgetter= {path="../popgetter"}
+polars = {version ="^0.40.0", features = ["lazy","is_in","http","streaming", "parquet","polars-io","regex","strings","rows"]}
+futures = "0.3.30"
+tokio = "1.38.0"

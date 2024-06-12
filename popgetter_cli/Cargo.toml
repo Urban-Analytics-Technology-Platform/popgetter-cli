@@ -1,0 +1,27 @@
+[package]
+name = "popgetter_cli"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.75"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = {version="1.0"}
+tokio = { version = "1.30.0", features = ["full"] }
+clap = { version = "4.5.0", features = ["derive"] }
+polars = {version ="0.39.2", features = ["lazy","is_in","http","streaming", "parquet","polars-io","regex","strings","rows"]}
+reqwest = {version = "0.12.3", features = ["json"]}
+enum_dispatch = "0.3"
+flatgeobuf = "~4.1.0"
+geozero = {version = "0.12.0", features= ["with-csv","with-geojson"]} 
+toml = "0.8.13"
+popgetter= {path="../popgetter"}
+comfy-table = "7.1.1"
+itertools = "0.13.0"
+strum_macros = "0.26.4"
+xdg = "2.5.2"
+log = "0.4.21"
+pretty_env_logger = "0.5.0"
+strum = "0.26"

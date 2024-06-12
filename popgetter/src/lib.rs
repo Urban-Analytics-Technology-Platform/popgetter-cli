@@ -1,9 +1,11 @@
 use anyhow::Result;
 use data_request_spec::DataRequestSpec;
+use flatgeobuf::packed_r_tree::SearchResultItem;
 use log::debug;
 use metadata::Metadata;
 use parquet::get_metrics;
 use polars::{frame::DataFrame, prelude::DataFrameJoinOps};
+use search::{SearchRequest, SearchResults};
 use tokio::try_join;
 
 use crate::{config::Config, geo::get_geometries};
@@ -61,5 +63,9 @@ impl Popgetter {
 
         let result = geoms.inner_join(&metrics?, ["GEOID"], ["GEO_ID"])?;
         Ok(result)
+    }
+
+    pub async fn search(&self,search_request: &SearchRequest)->Result<SearchResults>{
+        search_request.clone().search_results(&self.metadata)
     }
 }
