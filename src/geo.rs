@@ -1,4 +1,4 @@
-use crate::{data_request_spec::BBox, GEO_ID_COL_NAME};
+use crate::{data_request_spec::BBox, COL};
 use anyhow::{Context, Result};
 use flatgeobuf::{geozero, FeatureProperties, HttpFgbReader};
 use geozero::ToWkt;
@@ -26,7 +26,7 @@ pub async fn get_geometries(
 
     let mut geoms: Vec<String> = vec![];
     let mut ids: Vec<String> = vec![];
-    let geoid_col = geoid_col.unwrap_or_else(|| GEO_ID_COL_NAME.to_owned());
+    let geoid_col = geoid_col.unwrap_or_else(|| COL::GEO_ID.to_owned());
 
     while let Some(feature) = fgb.next().await? {
         let props = feature.properties()?;
@@ -35,7 +35,7 @@ pub async fn get_geometries(
         ids.push(id.clone());
     }
 
-    let ids = Series::new(GEO_ID_COL_NAME, ids);
+    let ids = Series::new(COL::GEO_ID, ids);
     let geoms = Series::new("geometry", geoms);
     let result = DataFrame::new(vec![ids, geoms])?;
     Ok(result)
@@ -51,7 +51,7 @@ mod tests {
 
     fn test_fgb() -> FgbWriter<'static> {
         let mut fgb = FgbWriter::create("countries", GeometryType::Polygon).unwrap();
-        fgb.add_column(GEO_ID_COL_NAME, ColumnType::String, |_fbb, col| {
+        fgb.add_column(COL::GEO_ID, ColumnType::String, |_fbb, col| {
             col.nullable = false
         });
         let geom1 = GeoJson(

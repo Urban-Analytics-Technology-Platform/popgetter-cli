@@ -1,6 +1,6 @@
 //! Search
 
-use crate::metadata::Metadata;
+use crate::{metadata::Metadata, COL};
 use chrono::NaiveDate;
 use log::debug;
 use polars::lazy::dsl::{col, lit, Expr};
@@ -60,12 +60,12 @@ impl From<SearchText> for Option<Expr> {
             .context
             .iter()
             .map(|field| match field {
-                SearchContext::Hxl => case_insensitive_contains("metric_hxl_tag", &val.text),
+                SearchContext::Hxl => case_insensitive_contains(COL::METRIC_HXL_TAG, &val.text),
                 SearchContext::HumanReadableName => {
-                    case_insensitive_contains("human_readable_name", &val.text)
+                    case_insensitive_contains(COL::METRIC_HUMAN_READABLE_NAME, &val.text)
                 }
                 SearchContext::Description => {
-                    case_insensitive_contains("metric_description", &val.text)
+                    case_insensitive_contains(COL::METRIC_DESCRIPTION, &val.text)
                 }
             })
             .collect();
@@ -76,13 +76,13 @@ impl From<SearchText> for Option<Expr> {
 impl From<YearRange> for Expr {
     fn from(value: YearRange) -> Self {
         match value {
-            YearRange::Before(year) => col("release_reference_period_start")
+            YearRange::Before(year) => col(COL::SOURCE_REFERENCE_PERIOD_START)
                 .lt_eq(lit(NaiveDate::from_ymd_opt(year.into(), 12, 31).unwrap())),
-            YearRange::After(year) => col("release_reference_period_end")
+            YearRange::After(year) => col(COL::SOURCE_REFERENCE_PERIOD_END)
                 .gt_eq(lit(NaiveDate::from_ymd_opt(year.into(), 1, 1).unwrap())),
             YearRange::Between(start, end) => {
-                let start_col = col("release_reference_period_start");
-                let end_col = col("release_reference_period_end");
+                let start_col = col(COL::SOURCE_REFERENCE_PERIOD_START);
+                let end_col = col(COL::SOURCE_REFERENCE_PERIOD_END);
                 let start_date = lit(NaiveDate::from_ymd_opt(start.into(), 1, 1).unwrap());
                 let end_date = lit(NaiveDate::from_ymd_opt(end.into(), 12, 31).unwrap());
                 // (start_col <= start_date AND end_col >= start_date)
@@ -109,7 +109,7 @@ impl From<DataPublisher> for Option<Expr> {
             value
                 .0
                 .iter()
-                .map(|val| case_insensitive_contains("data_publisher_name", val))
+                .map(|val| case_insensitive_contains(COL::PUBLISHER_NAME, val))
                 .collect(),
         )
     }
@@ -121,7 +121,7 @@ impl From<SourceDataRelease> for Option<Expr> {
             value
                 .0
                 .iter()
-                .map(|val| case_insensitive_contains("source_data_release_id", val))
+                .map(|val| case_insensitive_contains(COL::SOURCE_NAME, val))
                 .collect(),
         )
     }
@@ -133,7 +133,7 @@ impl From<GeometryLevel> for Option<Expr> {
             value
                 .0
                 .iter()
-                .map(|val| case_insensitive_contains("geometry_level", val))
+                .map(|val| case_insensitive_contains(COL::GEOMETRY_LEVEL, val))
                 .collect(),
         )
     }
@@ -145,7 +145,7 @@ impl From<Country> for Option<Expr> {
             value
                 .0
                 .iter()
-                .map(|val| case_insensitive_contains("country_name", val))
+                .map(|val| case_insensitive_contains(COL::COUNTRY_NAME_SHORT_EN, val))
                 .collect(),
         )
     }
@@ -157,7 +157,7 @@ impl From<SourceMetricId> for Option<Expr> {
             value
                 .0
                 .iter()
-                .map(|val| case_insensitive_contains("source_metric_id", val))
+                .map(|val| case_insensitive_contains(COL::METRIC_SOURCE_METRIC_ID, val))
                 .collect(),
         )
     }

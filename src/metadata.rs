@@ -17,7 +17,7 @@ use polars::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{config::Config, data_request_spec::GeometrySpec, parquet::MetricRequest};
+use crate::{config::Config, data_request_spec::GeometrySpec, parquet::MetricRequest, COL};
 
 /// This struct contains the base url and names of
 /// the files that contain the metadata. It has a
@@ -49,9 +49,9 @@ impl MetricId {
     /// Returns the column in the metadata that this id type corrispondes to
     pub fn to_col_name(&self) -> String {
         match self {
-            MetricId::Hxl(_) => "metric_hxl_tag".into(),
-            MetricId::Id(_) => "metric_id".into(),
-            MetricId::CommonName(_) => "human_readable_name".into(),
+            MetricId::Hxl(_) => COL::METRIC_HXL_TAG.into(),
+            MetricId::Id(_) => COL::METRIC_ID.into(),
+            MetricId::CommonName(_) => COL::METRIC_HUMAN_READABLE_NAME.into(),
         }
     }
     /// Return a string representing the textual content of the ID
@@ -114,7 +114,7 @@ impl ExpandedMetadataTable {
 
     /// Filter the dataframe by the specified metrics
     pub fn select_metrics(&self, metrics: &[MetricId]) -> Self {
-        debug!("{:#?}", metrics);
+        debug!("metrics = {:#?}", metrics);
         let mut id_collections: HashMap<String, Vec<String>> = HashMap::new();
 
         for metric in metrics {
@@ -125,17 +125,17 @@ impl ExpandedMetadataTable {
         }
 
         let mut filter_expression: Option<Expr> = None;
-        debug!("{:#?}", id_collections);
+        debug!("id_collections = {:#?}", id_collections);
         for (col_name, ids) in &id_collections {
             let filter_series = Series::new("filter", ids.clone());
-            debug!("{:#?}", filter_series);
+            debug!("filter_series = {:#?}", filter_series);
             filter_expression = if let Some(expression) = filter_expression {
                 Some(expression.or(col(col_name).is_in(lit(filter_series))))
             } else {
                 Some(col(col_name).is_in(lit(filter_series)))
             };
         }
-        debug!("{:#?}", filter_expression);
+        debug!("filter_expression = {:#?}", filter_expression);
         ExpandedMetadataTable(self.as_df().filter(filter_expression.unwrap()))
     }
 
@@ -143,14 +143,17 @@ impl ExpandedMetadataTable {
     pub fn to_metric_requests(&self, config: &Config) -> Result<Vec<MetricRequest>> {
         let df = self
             .as_df()
-            .select([col("metric_parquet_path"), col("parquet_column_name")])
+            .select([
+                col(COL::METRIC_PARQUET_PATH),
+                col(COL::METRIC_PARQUET_COLUMN_NAME),
+            ])
             .collect()?;
         debug!("{}", df);
         let metric_requests: Vec<MetricRequest> = df
-            .column("parquet_column_name")?
+            .column(COL::METRIC_PARQUET_COLUMN_NAME)?
             .str()?
             .into_iter()
-            .zip(df.column("metric_parquet_path")?.str()?)
+            .zip(df.column(COL::METRIC_PARQUET_PATH)?.str()?)
             .filter_map(|(column, file)| {
                 if let (Some(column), Some(file)) = (column, file) {
                     Some(MetricRequest {
@@ -167,7 +170,10 @@ impl ExpandedMetadataTable {
 
     /// Select a specific geometry level in the dataframe filtering out all others
     pub fn select_geometry(&self, geometry: &str) -> Self {
-        ExpandedMetadataTable(self.as_df().filter(col("geometry_level").eq(lit(geometry))))
+        ExpandedMetadataTable(
+            self.as_df()
+                .filter(col(COL::GEOMETRY_LEVEL).eq(lit(geometry))),
+        )
     }
 
     /// Select a specific set of years in the dataframe filtering out all others
@@ -186,8 +192,8 @@ impl ExpandedMetadataTable {
     pub fn avaliable_geometries(&self) -> Result<Vec<String>> {
         let df = self.as_df();
         let counts: DataFrame = df
-            .group_by([col("geometry_level")])
-            .agg([col("geometry_level").count().alias("count")])
+            .group_by([col(COL::GEOMETRY_LEVEL)])
+            .agg([col(COL::GEOMETRY_LEVEL).count().alias("count")])
             .sort(
                 ["count"],
                 SortMultipleOptions::new().with_order_descending(true),
@@ -195,7 +201,7 @@ impl ExpandedMetadataTable {
             .collect()?;
 
         Ok(counts
-            .column("geometry_level")?
+            .column(COL::GEOMETRY_LEVEL)?
             .str()?
             .iter()
             .filter_map(|geom| geom.map(std::borrow::ToOwned::to_owned))
@@ -225,9 +231,9 @@ impl ExpandedMetadataTable {
     /// Get fully speced metric ids
     pub fn get_explicit_metric_ids(&self) -> Result<Vec<MetricId>> {
         debug!("{}", self.as_df().collect()?);
-        let reamining: DataFrame = self.as_df().select([col("metric_id")]).collect()?;
+        let reamining: DataFrame = self.as_df().select([col(COL::METRIC_ID)]).collect()?;
         Ok(reamining
-            .column("metric_id")?
+            .column(COL::METRIC_ID)?
             .str()?
             .into_iter()
             .filter_map(|pos_id| pos_id.map(|id| MetricId::Id(id.to_owned())))
@@ -305,86 +311,27 @@ impl Metadata {
             .metrics
             .clone()
             .lazy()
-            // Rename these first because they will cause clashes when merging
-            .rename(
-                ["id", "description", "hxl_tag"],
-                ["metric_id", "metric_description", "metric_hxl_tag"],
-            )
             // Join source data releases
             .join(
                 self.source_data_releases.clone().lazy(),
-                [col("source_data_release_id")],
-                [col("id")],
+                [col(COL::METRIC_SOURCE_DATA_RELEASE_ID)],
+                [col(COL::SOURCE_ID)],
                 JoinArgs::new(JoinType::Inner),
-            )
-            .rename(
-                [
-                    "url",
-                    "description",
-                    "name",
-                    "date_published",
-                    "reference_period_start",
-                    "reference_period_end",
-                    "collection_period_start",
-                    "collection_period_end",
-                    "expect_next_update",
-                ],
-                [
-                    "release_url",
-                    "release_description",
-                    "release_name",
-                    "release_date_published",
-                    "release_reference_period_start",
-                    "release_reference_period_end",
-                    "release_collection_period_start",
-                    "release_collection_period_end",
-                    "release_expect_next_update",
-                ],
             )
             // Join geometry metadata
             .join(
                 self.geometries.clone().lazy(),
-                [col("geometry_metadata_id")],
-                [col("id")],
+                [col(COL::SOURCE_GEOMETRY_METADATA_ID)],
+                [col(COL::GEOMETRY_ID)],
                 JoinArgs::new(JoinType::Inner),
-            )
-            .rename(
-                [
-                    "validity_period_start",
-                    "validity_period_end",
-                    "level",
-                    "hxl_tag",
-                    "filename_stem",
-                ],
-                [
-                    "geometry_validity_period_start",
-                    "geometry_validity_period_end",
-                    "geometry_level",
-                    "geometry_hxl_tag",
-                    "geometry_filename_stem",
-                ],
             )
             // Join data publishers
             .join(
                 self.data_publishers.clone().lazy(),
-                [col("data_publisher_id")],
-                [col("id")],
+                [col(COL::SOURCE_DATA_PUBLISHER_ID)],
+                [col(COL::PUBLISHER_ID)],
                 JoinArgs::new(JoinType::Inner),
-            )
-            .rename(
-                ["url", "description", "name"],
-                [
-                    "data_publisher_url",
-                    "data_publisher_description",
-                    "data_publisher_name",
-                ],
-            )
-            // Get rid of intermediate IDs as we don't need them
-            .drop([
-                "source_data_release_id",
-                "geometry_metadata_id",
-                "data_publisher_id",
-            ]);
+            );
         // TODO: Add a country_id column to the metadata, and merge in the countries as well. See
         // https://github.com/Urban-Analytics-Technology-Platform/popgetter/issues/104
 

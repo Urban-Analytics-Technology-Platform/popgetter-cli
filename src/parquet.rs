@@ -3,7 +3,7 @@ use log::debug;
 use polars::prelude::*;
 use std::collections::HashSet;
 
-use crate::GEO_ID_COL_NAME;
+use crate::COL;
 
 #[derive(Debug)]
 pub struct MetricRequest {
@@ -19,7 +19,7 @@ fn get_metrics_from_file(
     geo_ids: Option<&[&str]>,
 ) -> Result<DataFrame> {
     let mut cols: Vec<Expr> = columns.iter().map(|c| col(c)).collect();
-    cols.push(col(GEO_ID_COL_NAME));
+    cols.push(col(COL::GEO_ID));
 
     let args = ScanArgsParquet::default();
 
@@ -29,7 +29,7 @@ fn get_metrics_from_file(
 
     let df = if let Some(ids) = geo_ids {
         let id_series = Series::new("geo_ids", ids);
-        df.filter(col(GEO_ID_COL_NAME).is_in(lit(id_series)))
+        df.filter(col(COL::GEO_ID).is_in(lit(id_series)))
     } else {
         df
     };
@@ -71,8 +71,8 @@ pub fn get_metrics(metrics: &[MetricRequest], geo_ids: Option<&[&str]>) -> Resul
         if let Some(prev_dfs) = joined_df {
             joined_df = Some(prev_dfs.join(
                 &df,
-                vec![GEO_ID_COL_NAME],
-                vec![GEO_ID_COL_NAME],
+                vec![COL::GEO_ID],
+                vec![COL::GEO_ID],
                 JoinArgs::new(JoinType::Inner),
             )?);
         } else {
@@ -108,7 +108,7 @@ mod tests {
             "The returned dataframe should have the correct number of rows"
         );
         assert!(
-            df.column(GEO_ID_COL_NAME).is_ok(),
+            df.column(COL::GEO_ID).is_ok(),
             "The returned dataframe should have a GEO_ID column"
         );
         assert!(
