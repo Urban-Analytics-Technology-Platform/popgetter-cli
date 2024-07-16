@@ -244,7 +244,7 @@ pub struct SourceMetricId(pub String);
 /// However, if a parameter has multiple values (e.g. multiple text strings), these are combined
 /// with an OR operation. So searching for multiple text strings will return metrics that satisfy
 /// any of the text strings.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct SearchParams {
     pub text: Vec<SearchText>,
     pub year_range: Option<Vec<YearRange>>,
