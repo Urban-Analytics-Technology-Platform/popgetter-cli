@@ -65,6 +65,13 @@ fn _combine_exprs_with_and1(exprs: NonEmpty<Expr>) -> Expr {
     query
 }
 
+/// Search in a column for a regex string literal.
+fn case_insensitive_regex_contains(column: &str, pattern: &str) -> Expr {
+    // Make case-insensitive version
+    let regex = format!("(?i){}", pattern);
+    col(column).str().contains(lit(regex), true)
+}
+
 /// Search in a column case-insensitively for a string literal (i.e. not a regex!). The search
 /// parameter can appear anywhere in the column value.
 fn case_insensitive_contains(column: &str, value: &str) -> Expr {
@@ -105,6 +112,23 @@ impl From<SearchText> for Expr {
             }
             SearchContext::Description => {
                 case_insensitive_contains(COL::METRIC_DESCRIPTION, &val.text)
+            }
+        });
+        combine_exprs_with_or1(queries)
+    }
+}
+
+/// Implementing conversion from `SearchText` to a polars expression enables a
+/// `SearchText` to be passed to polars dataframe for filtering results.
+impl From<SearchRegex> for Expr {
+    fn from(val: SearchRegex) -> Self {
+        let queries: NonEmpty<Expr> = val.context.map(|field| match field {
+            SearchContext::Hxl => case_insensitive_regex_contains(COL::METRIC_HXL_TAG, &val.regex),
+            SearchContext::HumanReadableName => {
+                case_insensitive_regex_contains(COL::METRIC_HUMAN_READABLE_NAME, &val.regex)
+            }
+            SearchContext::Description => {
+                case_insensitive_regex_contains(COL::METRIC_DESCRIPTION, &val.regex)
             }
         });
         combine_exprs_with_or1(queries)
@@ -194,13 +218,10 @@ pub struct SearchText {
     pub context: NonEmpty<SearchContext>,
 }
 
-impl Default for SearchText {
-    fn default() -> Self {
-        Self {
-            text: "".to_string(),
-            context: SearchContext::all(),
-        }
-    }
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SearchRegex {
+    pub regex: String,
+    pub context: NonEmpty<SearchContext>,
 }
 
 /// Search over years
@@ -247,6 +268,7 @@ pub struct SourceMetricId(pub String);
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SearchParams {
     pub text: Vec<SearchText>,
+    pub regex: Vec<SearchRegex>,
     pub year_range: Option<Vec<YearRange>>,
     pub metric_id: Vec<MetricId>,
     pub geometry_level: Option<GeometryLevel>,
@@ -282,12 +304,13 @@ fn _to_optqueries_then_or<T: Into<Option<Expr>>>(queries: Vec<T>) -> Option<Expr
 
 impl From<SearchParams> for Option<Expr> {
     fn from(value: SearchParams) -> Self {
-        let mut subexprs: Vec<Option<Expr>> = value
-            .text
-            .into_iter()
-            .map(|text| Some(text.into()))
-            .collect();
+        // Any of provided text (combine with OR into simple Expr)
+        let mut subexprs: Vec<Option<Expr>> = vec![to_queries_then_or(value.text)];
+        // Any of provided regex (combine with OR into simple Expr)
+        subexprs.extend([to_queries_then_or(value.regex)]);
+        // Any of provided metric IDs (combine with OR into simple Expr)
         subexprs.extend([to_queries_then_or(value.metric_id)]);
+        // Any of provided year ranges (combine with OR into simple Expr)
         if let Some(year_range) = value.year_range {
             subexprs.extend([to_queries_then_or(year_range)]);
         }
@@ -301,6 +324,7 @@ impl From<SearchParams> for Option<Expr> {
         subexprs.extend(other_subexprs);
         // Remove the Nones and unwrap the Somes
         let valid_subexprs: Vec<Expr> = subexprs.into_iter().flatten().collect();
+        // All expressions are combined with AND
         combine_exprs_with_and(valid_subexprs)
     }
 }
@@ -414,9 +438,43 @@ impl SearchResults {
 
 #[cfg(test)]
 mod tests {
-    // use super::*;
+    use polars::prelude::*;
+
+    use super::*;
+
+    fn df() -> DataFrame {
+        df!(
+            "Fruit" => &["Apple", "Apple", "Pear"],
+            "FruitDup" => &["Apple", "Applle", "Pear"],
+            "Color" => &["Red", "Yellow", "Green"]
+        )
+        .unwrap()
+    }
+
     // #[test]
     // fn test_search_request() {
     //     let mut sr = SearchRequest{search_string: None}.with_country("a").with_country("b");
     // }
+
+    #[test]
+    fn test_search_regex() -> anyhow::Result<()> {
+        assert!(
+            df().lazy()
+                .filter(case_insensitive_regex_contains("Fruit", "^a.*pl[^l]{1}$"))
+                .collect()?
+                .shape()
+                == (2, 3)
+        );
+        assert!(
+            df().lazy()
+                .filter(case_insensitive_regex_contains(
+                    "FruitDup",
+                    "^a.*pl[^l]{1}$"
+                ))
+                .collect()?
+                .shape()
+                == (1, 3)
+        );
+        Ok(())
+    }
 }

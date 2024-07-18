@@ -13,7 +13,7 @@ use popgetter::{
     },
     geo::BBox,
     search::{
-        Country, DataPublisher, GeometryLevel, MetricId, SearchContext, SearchParams,
+        Country, DataPublisher, GeometryLevel, MetricId, SearchContext, SearchParams, SearchRegex,
         SearchResults, SearchText, SourceDataRelease, SourceMetricId, YearRange,
     },
     Popgetter,
@@ -273,6 +273,13 @@ struct SearchParamsArgs {
     description: Vec<String>,
     #[arg(short, long, help="Filter by HXL tag, name, or description", num_args=0..)]
     text: Vec<String>,
+    #[arg(
+        short,
+        long,
+        help="Filter with case-insensitive regex by HXL tag, name, or description",
+        num_args=0..
+    )]
+    regex: Vec<String>,
 }
 
 /// Expected behaviour:
@@ -348,10 +355,42 @@ fn text_searches_from_args(
     all_text_searches
 }
 
+fn regex_searches_from_args(
+    hxl: Vec<String>,
+    name: Vec<String>,
+    description: Vec<String>,
+    regex: Vec<String>,
+) -> Vec<SearchRegex> {
+    let mut all_regex_searches: Vec<SearchRegex> = vec![];
+    all_regex_searches.extend(hxl.iter().map(|r| SearchRegex {
+        regex: r.clone(),
+        context: nonempty![SearchContext::Hxl],
+    }));
+    all_regex_searches.extend(name.iter().map(|r| SearchRegex {
+        regex: r.clone(),
+        context: nonempty![SearchContext::HumanReadableName],
+    }));
+    all_regex_searches.extend(description.iter().map(|r| SearchRegex {
+        regex: r.clone(),
+        context: nonempty![SearchContext::Description],
+    }));
+    all_regex_searches.extend(regex.iter().map(|r| SearchRegex {
+        regex: r.clone(),
+        context: SearchContext::all(),
+    }));
+    all_regex_searches
+}
+
 impl From<SearchParamsArgs> for SearchParams {
     fn from(args: SearchParamsArgs) -> Self {
         SearchParams {
-            text: text_searches_from_args(args.hxl, args.name, args.description, args.text),
+            text: text_searches_from_args(
+                args.hxl.clone(),
+                args.name.clone(),
+                args.description.clone(),
+                args.text.clone(),
+            ),
+            regex: regex_searches_from_args(args.hxl, args.name, args.description, args.regex),
             year_range: args.year_range.clone(),
             geometry_level: args.geometry_level.clone().map(GeometryLevel),
             source_data_release: args.source_data_release.clone().map(SourceDataRelease),
