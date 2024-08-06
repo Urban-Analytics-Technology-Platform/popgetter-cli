@@ -1,32 +1,31 @@
 use std::default::Default;
 use std::fmt::Display;
+use std::path::Path;
 
 use anyhow::{anyhow, Result};
 use futures::future::join_all;
 use log::debug;
 use log::info;
 use polars::{
-    frame::DataFrame,
     lazy::{
         dsl::col,
         frame::{IntoLazy, LazyFrame, ScanArgsParquet},
     },
-    prelude::{JoinArgs, JoinType, UnionArgs},
+    prelude::{DataFrame, JoinArgs, JoinType, ParquetCompression, ParquetWriter, UnionArgs},
 };
 use tokio::try_join;
 
 use crate::{config::Config, search::MetricId, COL};
 
-/// This struct contains the base url and names of the files that contain the metadata.
-pub struct PATHS {}
-
-impl PATHS {
-    pub const GEOMETRY_METADATA: &'static str = "geometry_metadata.parquet";
-    pub const METRIC_METADATA: &'static str = "metric_metadata.parquet";
-    pub const COUNTRY: &'static str = "country_metadata.parquet";
-    pub const SOURCE: &'static str = "source_data_releases.parquet";
-    pub const PUBLISHER: &'static str = "data_publishers.parquet";
+/// This module contains the base url and names of the files that contain the metadata.
+pub mod paths {
+    pub const GEOMETRY_METADATA: &str = "geometry_metadata.parquet";
+    pub const METRIC_METADATA: &str = "metric_metadata.parquet";
+    pub const COUNTRY: &str = "country_metadata.parquet";
+    pub const SOURCE: &str = "source_data_releases.parquet";
+    pub const PUBLISHER: &str = "data_publishers.parquet";
 }
+use paths as PATHS;
 
 /// `CountryMetadataLoader` takes a country iso string
 /// along with a CountryMetadataPaths and provides methods
@@ -57,6 +56,58 @@ pub struct Metadata {
     pub source_data_releases: DataFrame,
     pub data_publishers: DataFrame,
     pub countries: DataFrame,
+}
+
+// TODO: add condition with feature "not_wasm" feature
+fn path_to_df<P: AsRef<Path>>(path: P) -> anyhow::Result<DataFrame> {
+    Ok(LazyFrame::scan_parquet(path, ScanArgsParquet::default())?.collect()?)
+}
+
+// TODO: add condition with feature "not_wasm" feature
+fn df_to_file<P: AsRef<Path>>(path: P, df: &DataFrame) -> anyhow::Result<()> {
+    let file = std::fs::File::create(path)?;
+    ParquetWriter::new(file)
+        .with_compression(ParquetCompression::Zstd(None))
+        .finish(&mut df.clone())?;
+    Ok(())
+}
+
+// TODO: add condition with feature "not_wasm" feature
+fn prepend<P: AsRef<Path>>(cache_path: P, file_name: &str) -> std::path::PathBuf {
+    cache_path.as_ref().join(file_name)
+}
+
+impl Metadata {
+    // TODO: add condition with feature "not_wasm" feature
+    pub fn from_cache<P: AsRef<Path>>(cache_dir: P) -> anyhow::Result<Self> {
+        let metrics = path_to_df(prepend(&cache_dir, PATHS::METRIC_METADATA))?;
+        let geometries = path_to_df(prepend(&cache_dir, PATHS::GEOMETRY_METADATA))?;
+        let source_data_releases = path_to_df(prepend(&cache_dir, PATHS::SOURCE))?;
+        let data_publishers = path_to_df(prepend(&cache_dir, PATHS::PUBLISHER))?;
+        let countries = path_to_df(prepend(&cache_dir, PATHS::COUNTRY))?;
+        Ok(Self {
+            metrics,
+            geometries,
+            source_data_releases,
+            data_publishers,
+            countries,
+        })
+    }
+    // TODO: add condition with feature "not_wasm" feature
+    pub fn write_cache<P: AsRef<Path>>(&self, cache_dir: P) -> anyhow::Result<()> {
+        df_to_file(prepend(&cache_dir, PATHS::METRIC_METADATA), &self.metrics)?;
+        df_to_file(
+            prepend(&cache_dir, PATHS::GEOMETRY_METADATA),
+            &self.geometries,
+        )?;
+        df_to_file(
+            prepend(&cache_dir, PATHS::SOURCE),
+            &self.source_data_releases,
+        )?;
+        df_to_file(prepend(&cache_dir, PATHS::PUBLISHER), &self.data_publishers)?;
+        df_to_file(prepend(&cache_dir, PATHS::COUNTRY), &self.countries)?;
+        Ok(())
+    }
 }
 
 /// Describes a fully specified selection plan. The MetricIds should all
