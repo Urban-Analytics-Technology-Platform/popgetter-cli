@@ -49,7 +49,7 @@ impl ExpandedMetadata {
 /// from a single `CountryMetadataLoader` or for all countries.
 /// It also provides the various functions for searching and
 /// getting `MetricRequests` from the catalogue.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Metadata {
     pub metrics: DataFrame,
     pub geometries: DataFrame,

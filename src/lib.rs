@@ -22,6 +22,7 @@ pub mod metadata;
 pub mod parquet;
 pub mod search;
 
+#[derive(Debug, PartialEq)]
 pub struct Popgetter {
     pub metadata: Metadata,
     pub config: Config,
@@ -50,5 +51,24 @@ impl Popgetter {
     /// Generates `SearchResults` using popgetter given `SearchParams`
     pub fn search(&self, search_params: SearchParams) -> SearchResults {
         search_params.search(&self.metadata.combined_metric_source_geometry())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use tempfile::TempDir;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_popgetter_cache() -> anyhow::Result<()> {
+        let tempdir = TempDir::new()?;
+        let config = Config::default();
+        let popgetter = Popgetter::new_with_config(config.clone()).await?;
+        popgetter.metadata.write_cache(&tempdir)?;
+        let popgetter_from_cache = Popgetter::new_with_config_and_cache(config, &tempdir)?;
+        assert_eq!(popgetter, popgetter_from_cache);
+        Ok(())
     }
 }
