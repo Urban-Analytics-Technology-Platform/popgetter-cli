@@ -1,9 +1,9 @@
 // FromStr is required by EnumString. The compiler seems to not be able to
 // see that and so is giving a warning. Dont remove it
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use enum_dispatch::enum_dispatch;
-use log::{debug, info};
+use log::{debug, error, info};
 use nonempty::nonempty;
 use popgetter::{
     config::Config,
@@ -136,6 +136,32 @@ impl From<OutputFormat> for OutputFormatter {
     }
 }
 
+async fn read_popgetter(config: Config) -> anyhow::Result<Popgetter> {
+    let xdg_dirs = xdg::BaseDirectories::with_prefix("popgetter")?;
+    // TODO: enable cache to be optional
+    let path = xdg_dirs.get_cache_home();
+    // Try to read metadata from cache
+    if path.exists() {
+        match Popgetter::new_with_config_and_cache(config.clone(), &path) {
+            Ok(popgetter) => return Ok(popgetter),
+            Err(err) => {
+                error!("Failed to read metadata from cache with error: {err}");
+            }
+        }
+    }
+    // If no metadata cache, get metadata and try to cache
+    std::fs::create_dir_all(&path)?;
+    let popgetter = Popgetter::new_with_config(config).await?;
+
+    // If error creating cache, remove cache path
+    if let Err(err) = popgetter.metadata.write_cache(&path) {
+        std::fs::remove_dir_all(&path)
+            .with_context(|| "Failed to remove cache dir following error writing cache: {err}")?;
+        Err(err)?
+    }
+    Ok(popgetter)
+}
+
 impl RunCommand for DataCommand {
     async fn run(&self, config: Config) -> Result<()> {
         info!("Running `data` subcommand");
@@ -145,7 +171,7 @@ impl RunCommand for DataCommand {
                 DOWNLOADING_SEARCHING_STRING.to_string() + RUNNING_TAIL_STRING,
             )
         });
-        let popgetter = Popgetter::new_with_config(config).await?;
+        let popgetter = read_popgetter(config).await?;
         let search_results = popgetter.search(self.search_params_args.clone().into());
 
         // Make DataRequestSpec
@@ -374,7 +400,7 @@ impl RunCommand for MetricsCommand {
                 DOWNLOADING_SEARCHING_STRING.into(),
             )
         });
-        let popgetter = Popgetter::new_with_config(config).await?;
+        let popgetter = read_popgetter(config).await?;
         let search_results = popgetter.search(self.search_params_args.clone().into());
         if let Some(mut s) = sp {
             s.stop_with_symbol(COMPLETE_PROGRESS_STRING);
@@ -414,7 +440,7 @@ impl RunCommand for CountriesCommand {
                 spinner_message.to_string() + RUNNING_TAIL_STRING,
             )
         });
-        let popgetter = Popgetter::new_with_config(config).await?;
+        let popgetter = read_popgetter(config).await?;
         if let Some(mut s) = sp {
             s.stop_with_symbol(COMPLETE_PROGRESS_STRING);
         }
