@@ -1,0 +1,83 @@
+[package]
+name = "popgetter"
+version = "0.2.0"
+edition = "2021"
+
+[lib]
+name = "popgetter"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1.0.75"
+# Requires version 4.2.1 for WASM (see: https://github.com/flatgeobuf/flatgeobuf/pull/366)
+flatgeobuf = "4.2.1"
+chrono = { version = "0.4.37", features = ["serde"] }
+enum_dispatch = "0.3"
+geo = "0.28.0"
+geojson = { version = "0.24.1", optional = true }
+geozero = { version = "0.13.0", default-features = false, features = [
+    "with-csv",
+    "with-geojson",
+] }
+# TODO: check if not required
+# http-range-client = { version = "0.7.2", optional = true, default-features = false, features = [
+#     "reqwest-async",
+# ] }
+futures = "0.3.30"
+itertools = "0.13.0"
+log = "0.4.21"
+regex = "1.10.4"
+reqwest = { version = "0.11" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+strum_macros = "0.26"
+strum = "0.26"
+tokio = { version = "1", default-features = false, features = ["rt", "macros"] }
+thiserror = "1"
+wkt = "0.11"
+wkb = "0.7.1"
+nonempty = { version = "0.10.0", features = ["serialize"] }
+
+# TODO: Exploring polars versions that can be compiled to WASM (see PR: https://github.com/pola-rs/polars/pull/16731)
+# Current dependency is on a UATP fork where the "parquet" feature is updated to enable compilation
+# to WASM. This will need to be temporary so a version pointing to a published crate remains
+# possible (since crates.io requires no git deps)
+polars = { git = "https://github.com/Urban-Analytics-Technology-Platform/polars.git", branch = "parquet-wasm", default-features = false }
+
+[target.'cfg(not(target_arch="wasm32"))'.dev-dependencies]
+httpmock = { version = "0.7.0-rc.1" }
+
+[target.'cfg(target_arch="wasm32")'.dev-dependencies]
+wasm-bindgen-test = { version = "0.3" }
+
+
+[features]
+formatters = ["dep:geojson"]
+default = ["formatters", "not_wasm"]
+not_wasm = [
+    "polars/csv",
+    "polars/temporal",
+    "polars/lazy",
+    "polars/is_in",
+    "polars/dtype-time",
+    "polars/parquet",
+    "polars/regex",
+    "polars/strings",
+    "polars/rows",
+    "polars/http",
+    "polars/streaming",
+]
+wasm = [
+    "polars/csv",
+    "polars/temporal",
+    "polars/lazy",
+    "polars/is_in",
+    "polars/dtype-time",
+    "polars/parquet",
+    "polars/regex",
+    "polars/strings",
+    "polars/rows",
+    # "http" and "streaming" features do not compile to WASM due to dep "mio" that is introduced
+    # "polars/http",
+    # "polars/streaming"
+]

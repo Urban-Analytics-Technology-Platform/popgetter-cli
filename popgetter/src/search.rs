@@ -2,19 +2,20 @@
 
 use crate::{
     config::Config,
-    data_request_spec::DataRequestSpec,
+    data_request_spec::RegionSpec,
     geo::get_geometries,
     metadata::ExpandedMetadata,
     parquet::{get_metrics, MetricRequest},
     COL,
 };
+use anyhow::bail;
 use chrono::NaiveDate;
 use log::{debug, warn};
 use nonempty::{nonempty, NonEmpty};
 use polars::lazy::dsl::{col, lit, Expr};
 use polars::prelude::{DataFrame, DataFrameJoinOps, IntoLazy, LazyFrame};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::{collections::HashSet, str::FromStr};
 use tokio::try_join;
 
 // TODO: add trait/struct for combine_exprs
@@ -211,6 +212,39 @@ pub enum YearRange {
     Between(u16, u16),
 }
 
+impl FromStr for YearRange {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        fn str_to_option_u16(value: &str) -> Result<Option<u16>, anyhow::Error> {
+            if value.is_empty() {
+                return Ok(None);
+            }
+            match value.parse::<u16>() {
+                Ok(value) => Ok(Some(value)),
+                Err(_) => bail!("Invalid year range"),
+            }
+        }
+        let parts: Vec<Option<u16>> = s
+            .split("...")
+            .map(str_to_option_u16)
+            .collect::<Result<Vec<Option<u16>>, _>>()?;
+        match parts.as_slice() {
+            [Some(a)] => Ok(YearRange::Between(*a, *a)),
+            [None, Some(a)] => Ok(YearRange::Before(*a)),
+            [Some(a), None] => Ok(YearRange::After(*a)),
+            [Some(a), Some(b)] => {
+                if a > b {
+                    bail!("Invalid year range")
+                } else {
+                    Ok(YearRange::Between(*a, *b))
+                }
+            }
+            _ => bail!("Invalid year range"),
+        }
+    }
+}
+
 /// Search over metric IDs
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MetricId(pub String);
@@ -244,7 +278,7 @@ pub struct SourceMetricId(pub String);
 /// However, if a parameter has multiple values (e.g. multiple text strings), these are combined
 /// with an OR operation. So searching for multiple text strings will return metrics that satisfy
 /// any of the text strings.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct SearchParams {
     pub text: Vec<SearchText>,
     pub year_range: Option<Vec<YearRange>>,
@@ -254,6 +288,7 @@ pub struct SearchParams {
     pub data_publisher: Option<DataPublisher>,
     pub country: Option<Country>,
     pub source_metric_id: Option<SourceMetricId>,
+    pub region_spec: Vec<RegionSpec>,
 }
 
 impl SearchParams {
@@ -356,32 +391,47 @@ impl SearchResults {
     pub async fn download(
         self,
         config: &Config,
-        data_request_spec: DataRequestSpec,
+        search_params: &SearchParams,
+        include_geoms: bool,
     ) -> anyhow::Result<DataFrame> {
         let metric_requests = self.to_metric_requests(config);
         debug!("metric_requests = {:#?}", metric_requests);
+
+        if metric_requests.is_empty() {
+            bail!(
+                "No metric requests were derived from given `search_params`: {:#?}",
+                search_params
+            )
+        }
+
         let all_geom_files: HashSet<String> = metric_requests
             .iter()
             .map(|m| m.geom_file.clone())
             .collect();
-        // Required because polars is blocking
-        let metrics = tokio::task::spawn_blocking(move || get_metrics(&metric_requests, None));
 
-        // TODO Handle multiple responses
+        // TODO Handle multiple geometries
         if all_geom_files.len() > 1 {
             unimplemented!("Multiple geometries not supported in current release");
+        } else if all_geom_files.len() == 0 {
+            bail!(
+                "No geometry files for the following `metric_requests`: {:#?}",
+                metric_requests
+            )
         }
 
-        let result = if data_request_spec.geometry.include_geoms {
+        // Keep as future and run alongside get_geometries
+        let metrics = get_metrics(&metric_requests, None);
+
+        let result = if include_geoms {
             // TODO Pass in the bbox as the second argument here
-            if data_request_spec.region.len() > 1 {
+            if search_params.region_spec.len() > 1 {
                 todo!(
                     "Multiple region specifications are not yet supported: {:#?}",
-                    data_request_spec.region
+                    search_params.region_spec
                 );
             }
-            let bbox = data_request_spec
-                .region
+            let bbox = search_params
+                .region_spec
                 .first()
                 .and_then(|region_spec| region_spec.bbox().clone());
 
@@ -393,17 +443,13 @@ impl SearchResults {
             }
             let geoms = get_geometries(all_geom_files.iter().next().unwrap(), bbox);
 
-            // try_join requires us to have the errors from all futures be the same.
-            // We use anyhow to get it back properly
-            let (metrics, geoms) = try_join!(
-                async move { metrics.await.map_err(anyhow::Error::from) },
-                geoms
-            )?;
+            // Run metrics and geoms futures
+            let (metrics, geoms) = try_join!(metrics, geoms)?;
             debug!("geoms: {geoms:#?}");
             debug!("metrics: {metrics:#?}");
-            geoms.inner_join(&metrics?, [COL::GEO_ID], [COL::GEO_ID])?
+            geoms.inner_join(&metrics, [COL::GEO_ID], [COL::GEO_ID])?
         } else {
-            let metrics = metrics.await.map_err(anyhow::Error::from)??;
+            let metrics = metrics.await.map_err(anyhow::Error::from)?;
             debug!("metrics: {metrics:#?}");
             metrics
         };

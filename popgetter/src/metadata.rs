@@ -1,18 +1,25 @@
 use std::default::Default;
 use std::fmt::Display;
 
-use anyhow::{anyhow, Result};
+#[cfg(not(target_arch = "wasm32"))]
+use anyhow::anyhow;
 use futures::future::join_all;
+#[cfg(target_arch = "wasm32")]
+use polars::{io::SerReader, prelude::ParquetReader};
+
 use log::debug;
 use log::info;
+#[cfg(not(target_arch = "wasm32"))]
+use polars::prelude::ScanArgsParquet;
 use polars::{
     frame::DataFrame,
     lazy::{
         dsl::col,
-        frame::{IntoLazy, LazyFrame, ScanArgsParquet},
+        frame::{IntoLazy, LazyFrame},
     },
     prelude::{JoinArgs, JoinType, UnionArgs},
 };
+
 use tokio::try_join;
 
 use crate::{config::Config, search::MetricId, COL};
@@ -85,7 +92,7 @@ impl Display for FullSelectionPlan {
 impl Metadata {
     /// Generate a Lazy DataFrame which joins the metrics, source and geometry metadata
     pub fn combined_metric_source_geometry(&self) -> ExpandedMetadata {
-        let df: LazyFrame = self
+        let mut df: LazyFrame = self
             .metrics
             .clone()
             .lazy()
@@ -141,7 +148,7 @@ impl CountryMetadataLoader {
 
     /// Load the Metadata catalouge for this country with
     /// the specified metadata paths
-    pub async fn load(self, config: &Config) -> Result<Metadata> {
+    pub async fn load(self, config: &Config) -> anyhow::Result<Metadata> {
         let t = try_join!(
             self.load_metadata(PATHS::METRIC_METADATA, config),
             self.load_metadata(PATHS::GEOMETRY_METADATA, config),
@@ -159,16 +166,31 @@ impl CountryMetadataLoader {
     }
 
     /// Performs a load of a given metadata parquet file
-    async fn load_metadata(&self, path: &str, config: &Config) -> Result<DataFrame> {
+    async fn load_metadata(&self, path: &str, config: &Config) -> anyhow::Result<DataFrame> {
         let full_path = format!("{}/{}/{path}", config.base_path, self.country);
-        let args = ScanArgsParquet::default();
+
         info!("Attempting to load dataframe from {full_path}");
-        tokio::task::spawn_blocking(move || {
-            LazyFrame::scan_parquet(&full_path, args)?
-                .collect()
-                .map_err(|e| anyhow!("Failed to load '{full_path}': {e}"))
-        })
-        .await?
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let args = ScanArgsParquet::default();
+            tokio::task::spawn_blocking(move || {
+                LazyFrame::scan_parquet(&full_path, args)?
+                    .collect()
+                    .map_err(|e| anyhow!("Failed to load '{full_path}': {e}"))
+            })
+            .await?
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let bytes = reqwest::Client::new()
+                .get(&full_path)
+                .send()
+                .await?
+                .bytes()
+                .await?;
+            let cursor = std::io::Cursor::new(bytes);
+            Ok(ParquetReader::new(cursor).finish()?)
+        }
     }
 }
 
@@ -182,15 +204,27 @@ async fn get_country_names(config: &Config) -> anyhow::Result<Vec<String>> {
         .lines()
         .map(|s| s.to_string())
         .collect())
+    // }
+    // #[cfg(target_arch = "wasm32")]
+    // {
+    //     Ok(Request::get(&format!("{}/countries.txt", config.base_path))
+    //         .send()
+    //         .await?
+    //         .text()
+    //         .await?
+    //         .lines()
+    //         .map(|s| s.to_string())
+    //         .collect())
+    // }
 }
 
 /// Load the metadata for a list of countries and merge them into
 /// a single `Metadata` catalogue.
-pub async fn load_all(config: &Config) -> Result<Metadata> {
+pub async fn load_all(config: &Config) -> anyhow::Result<Metadata> {
     let country_names = get_country_names(config).await?;
 
     info!("Detected country names: {:?}", country_names);
-    let metadata: Result<Vec<Metadata>> = join_all(
+    let metadata: anyhow::Result<Vec<Metadata>> = join_all(
         country_names
             .iter()
             .map(|c| CountryMetadataLoader::new(c).load(config)),
