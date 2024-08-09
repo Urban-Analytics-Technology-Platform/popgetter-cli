@@ -1,20 +1,26 @@
 {
   "region": [
     {
-      "BoundingBox": [
-        -74.251785,
-        40.647043,
-        -73.673286,
-        40.91014
-      ]
+      "BoundingBox": [-74.251785, 40.647043, -73.673286, 40.91014]
     }
   ],
   "metrics": [
     {
-      "NamedMetric": "B01001_E002"
+      "MetricId": "f29c1976"
     },
     {
-      "NamedMetric": "B01001_E001"
+      "MetricId": "079f3ba3"
+    },
+    {
+      "MetricId": "81cae95d"
+    },
+    {
+      "MetricText": "Key: uniqueID, Value: B01001_001;"
     }
-  ]
+  ],
+  "years": ["2021"],
+  "geometry": {
+    "geometry_level": "tract",
+    "include_geoms": true
+  }
 }

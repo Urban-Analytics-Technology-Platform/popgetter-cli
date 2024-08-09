@@ -1,6 +1,8 @@
 use anyhow::Result;
+use data_request_spec::DataRequestSpec;
 use log::debug;
 use metadata::Metadata;
+use polars::frame::DataFrame;
 use search::{SearchParams, SearchResults};
 
 use crate::config::Config;
@@ -20,6 +22,7 @@ pub mod metadata;
 pub mod parquet;
 pub mod search;
 
+/// Type for popgetter data and API
 pub struct Popgetter {
     pub metadata: Metadata,
     pub config: Config,
@@ -41,5 +44,30 @@ impl Popgetter {
     /// Generates `SearchResults` using popgetter given `SearchParams`
     pub fn search(&self, search_params: SearchParams) -> SearchResults {
         search_params.search(&self.metadata.combined_metric_source_geometry())
+    }
+
+    /// Downloads results using popgetter given `SearchResults`
+    pub async fn get_data_request(&self, data_request_spec: DataRequestSpec) -> Result<DataFrame> {
+        let include_geoms = data_request_spec
+            .geometry
+            .as_ref()
+            .map(|geo| geo.include_geoms)
+            .unwrap_or(true);
+        let search_params: SearchParams = data_request_spec.try_into()?;
+        let search_results = self.search(search_params.clone());
+        search_results
+            .download(&self.config, &search_params, include_geoms)
+            .await
+    }
+
+    /// Downloads results using popgetter given `SearchResults`
+    pub async fn get_search_params(
+        &self,
+        search_params: SearchParams,
+        include_geoms: bool,
+    ) -> Result<DataFrame> {
+        self.search(search_params.clone())
+            .download(&self.config, &search_params, include_geoms)
+            .await
     }
 }

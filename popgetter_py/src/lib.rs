@@ -1,9 +1,5 @@
 use std::default::Default;
 
-use ::popgetter::{
-    data_request_spec::{DataRequestSpec, GeometrySpec, MetricSpec},
-    search::{SearchParams, SearchText},
-};
 use polars::prelude::DataFrame;
 use pyo3::{
     prelude::*,
@@ -11,27 +7,26 @@ use pyo3::{
 };
 use pyo3_polars::PyDataFrame;
 
-async fn _search() -> DataFrame {
-    let search_params: SearchParams = SearchParams::default();
+use ::popgetter::COL;
+use ::popgetter::{
+    data_request_spec::{DataRequestSpec, GeometrySpec, MetricSpec},
+    search::{SearchParams, SearchText},
+};
+
+async fn _search(search_params: SearchParams) -> DataFrame {
     let popgetter = ::popgetter::Popgetter::new().await.unwrap();
     let search_results = popgetter.search(search_params);
     search_results
         .0
         .select([
-            "metric_id",
-            "human_readable_name",
-            "metric_description",
-            "metric_hxl_tag",
-            "geometry_level",
+            COL::METRIC_ID,
+            COL::METRIC_HUMAN_READABLE_NAME,
+            COL::METRIC_DESCRIPTION,
+            COL::METRIC_HXL_TAG,
+            COL::GEOMETRY_LEVEL,
         ])
         .unwrap()
 }
-
-// async fn _data()-> DataFrame{
-//     let search_request: SearchRequest = SearchRequest::default();
-//     let popgetter = Popgetter::new().await.unwrap();
-//     popgetter.search(&search_request).await.unwrap()
-// }
 
 fn get_search(obj: &Bound<'_, PyAny>) -> PyResult<SearchParams> {
     if let Ok(text) = obj.downcast::<PyString>() {
@@ -48,31 +43,29 @@ fn get_search(obj: &Bound<'_, PyAny>) -> PyResult<SearchParams> {
 
     if let Ok(dict) = obj.downcast::<PyDict>() {
         println!("Object is a dict {}", dict);
+        // TODO: add serde_json to parse python dict
         return Ok(SearchParams::default());
     };
 
     Ok(SearchParams::default())
 }
 
-fn get_data_request(obj: &Bound<'_, PyAny>) -> PyResult<DataRequestSpec> {
-    Ok(DataRequestSpec {
-        geometry: GeometrySpec {
-            include_geoms: true,
-            geometry_level: None,
-        },
-        region: vec![],
-        metrics: vec![MetricSpec::Metric(::popgetter::search::MetricId(
-            r"\#population\+adults".into(),
-        ))],
-        years: None,
-    })
-}
-
-async fn _get_data(data_request: &DataRequestSpec) -> DataFrame {
+async fn _get(data_request: DataRequestSpec) -> DataFrame {
     let popgetter = ::popgetter::Popgetter::new().await.unwrap();
     println!("running data request {:#?}", data_request);
-    todo!("Uncomment the below when get_data_request implemented")
-    // popgetter.get_data_request(data_request).await.unwrap()
+    popgetter.get_data_request(data_request).await.unwrap()
+}
+
+fn get_data_request(obj: &Bound<'_, PyAny>) -> PyResult<DataRequestSpec> {
+    Ok(DataRequestSpec {
+        geometry: Some(GeometrySpec {
+            include_geoms: true,
+            geometry_level: None,
+        }),
+        region: vec![],
+        metrics: vec![MetricSpec::MetricText(r"\#population\+adults".to_string())],
+        years: None,
+    })
 }
 
 #[pyfunction]
@@ -84,7 +77,7 @@ fn get(
         .build()?;
 
     // Call the asynchronous connect method using the runtime.
-    let result = rt.block_on(_get_data(&data_request));
+    let result = rt.block_on(_get(data_request));
     Ok(PyDataFrame(result))
 }
 
@@ -95,9 +88,7 @@ fn search(
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-
-    // Call the asynchronous connect method using the runtime.
-    let result = rt.block_on(_search());
+    let result = rt.block_on(_search(search_query));
     Ok(PyDataFrame(result))
 }
 
