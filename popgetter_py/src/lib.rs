@@ -3,7 +3,10 @@ use std::default::Default;
 use ::popgetter::{
     config::Config,
     data_request_spec::DataRequestSpec,
-    search::{DownloadParams, MetricId, Params, SearchParams, SearchText},
+    search::{
+        CaseSensitivity, DownloadParams, MatchType, MetricId, Params, SearchConfig, SearchParams,
+        SearchText,
+    },
     Popgetter, COL,
 };
 use polars::prelude::DataFrame;
@@ -80,7 +83,13 @@ fn get_search_params(obj: &Bound<'_, PyAny>) -> PyResult<SearchParams> {
             metric_id: text
                 .to_string()
                 .split(',')
-                .map(|id_str| MetricId(id_str.to_string()))
+                .map(|id_str| MetricId {
+                    id: id_str.to_string(),
+                    config: SearchConfig {
+                        match_type: MatchType::Startswith,
+                        case_sensitivity: CaseSensitivity::Insensitive,
+                    },
+                })
                 .collect::<Vec<_>>(),
             ..Default::default()
         });

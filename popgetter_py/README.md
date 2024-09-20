@@ -49,11 +49,18 @@ search_params = {
     "metric_id": [],
     "text": [{
       "text": "Key: uniqueID, Value: B01001_001;",
-      "context": ["Hxl", "HumanReadableName", "Description"]
+      "context": ["Hxl", "HumanReadableName", "Description"],
+      "config": {"match_type": "Regex", "case_sensitivity": "Insensitive"}
     }],
-    "geometry_level": "tract",
+    "geometry_level": {
+      "value": "tract",
+      "config": {"match_type": "Exact", "case_sensitivity": "Insensitive"}
+    },
     "year_range": [{"Between": [2021, 2021]}],
-    "country": "USA",
+    "country": {
+      "value": "USA",
+      "config": {"match_type": "Regex", "case_sensitivity": "Insensitive"}
+    },
     "region_spec": [
       {"BoundingBox": [-74.251785, 40.647043, -73.673286, 40.91014]}
     ]
@@ -75,9 +82,9 @@ data_request_spec = {
     {"BoundingBox": [-74.251785, 40.647043, -73.673286, 40.91014]}
   ],
   "metrics": [
-    {"MetricId": "f29c1976"},
-    {"MetricId": "079f3ba3"},
-    {"MetricId": "81cae95d"},
+    {"MetricId": {"id": "f29c1976"}},
+    {"MetricId": {"id": "079f3ba3"}},
+    {"MetricId": {"id": "81cae95d"}},
     {"MetricText": "Key: uniqueID, Value: B01001_001;"}
   ],
   "years": ["2021"],

@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::geo::BBox;
 use crate::search::{
-    DownloadParams, GeometryLevel, MetricId, Params, SearchContext, SearchParams, SearchText,
-    YearRange,
+    CaseSensitivity, DownloadParams, GeometryLevel, MatchType, MetricId, Params, SearchConfig,
+    SearchContext, SearchParams, SearchText, YearRange,
 };
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -36,6 +36,10 @@ impl TryFrom<DataRequestSpec> for Params {
                                 SearchContext::Hxl,
                                 SearchContext::Description
                             ],
+                            config: SearchConfig {
+                                match_type: MatchType::Regex,
+                                case_sensitivity: CaseSensitivity::Insensitive,
+                            },
                         }),
                         _ => None,
                     })
@@ -57,11 +61,20 @@ impl TryFrom<DataRequestSpec> for Params {
                         _ => None,
                     })
                     .collect_vec(),
-                geometry_level: value
-                    .geometry
-                    .as_ref()
-                    .and_then(|geometry| geometry.geometry_level.to_owned().map(GeometryLevel)),
+                geometry_level: value.geometry.as_ref().and_then(|geometry| {
+                    geometry
+                        .geometry_level
+                        .to_owned()
+                        .map(|geometry_level| GeometryLevel {
+                            value: geometry_level,
+                            config: SearchConfig {
+                                match_type: MatchType::Exact,
+                                case_sensitivity: CaseSensitivity::Insensitive,
+                            },
+                        })
+                }),
                 source_data_release: None,
+                source_download_url: None,
                 data_publisher: None,
                 country: None,
                 source_metric_id: None,
