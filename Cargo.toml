@@ -2,8 +2,12 @@
 members = [
     "popgetter",
     "popgetter_cli",
-    "popgetter_py"
+    # "popgetter_py"
 ]
+
+# # TODO: fix incompatibility of forked polars with pyo3-polars=0.14
+# # members = ["popgetter", "popgetter_cli", "popgetter_py"]
+# members = ["popgetter", "popgetter_cli"]
 
 resolver = "2"
 
@@ -14,16 +18,22 @@ clap = "4.5.0"
 comfy-table = "7.1.1"
 dirs = "5"
 enum_dispatch = "0.3"
-flatgeobuf = "~4.1.0"
+# Requires version 4.2.1 for WASM (see: https://github.com/flatgeobuf/flatgeobuf/pull/366)
+flatgeobuf = ">=4.2.1,<4.4"
 futures = "0.3.30"
 geo = "0.28.0"
 geojson = "0.24.1"
-geozero = "0.12.0"
+geozero = "0.13.0"
 httpmock = "0.7.0-rc.1"
 itertools = "0.13.0"
 log = "0.4.21"
 nonempty = "0.10.0"
-polars = "0.42.0"
+# polars = "0.42.0"
+# TODO: Exploring polars versions that can be compiled to WASM (see PR: https://github.com/pola-rs/polars/pull/16731)
+# Current dependency is on a UATP fork where the "parquet" feature is updated to enable compilation
+# to WASM. This will need to be temporary so a version pointing to a published crate remains
+# possible (since crates.io requires no git deps)
+polars = { git = "https://github.com/Urban-Analytics-Technology-Platform/polars.git", branch = "rs-0.42.0-parquet-wasm", default-features = false }
 pretty_env_logger = "0.5.0"
 pyo3 = "0.22.0"
 pyo3-polars = "0.16.0"
@@ -36,7 +46,7 @@ strum = "0.26"
 strum_macros = "0.26.4"
 tempfile = "3.12"
 thiserror = "1"
-tokio = "1.38.0"
+tokio = { version = "1.38.0", default-features = false }
 toml = "0.8.13"
 wkb = "0.7.1"
 wkt = "0.10.3"

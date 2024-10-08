@@ -455,8 +455,8 @@ impl SearchResults {
             )
         }
 
-        // Required because polars is blocking
-        let metrics = tokio::task::spawn_blocking(move || get_metrics(&metric_requests, None));
+        // Keep as future and run alongside get_geometries
+        let metrics = get_metrics(&metric_requests, None);
 
         let result = if download_params.include_geoms {
             // TODO Pass in the bbox as the second argument here
@@ -479,17 +479,13 @@ impl SearchResults {
             }
             let geoms = get_geometries(all_geom_files.iter().next().unwrap(), bbox);
 
-            // try_join requires us to have the errors from all futures be the same.
-            // We use anyhow to get it back properly
-            let (metrics, geoms) = try_join!(
-                async move { metrics.await.map_err(anyhow::Error::from) },
-                geoms
-            )?;
+            // Run metrics and geoms futures
+            let (metrics, geoms) = try_join!(metrics, geoms)?;
             debug!("geoms: {geoms:#?}");
             debug!("metrics: {metrics:#?}");
-            geoms.inner_join(&metrics?, [COL::GEO_ID], [COL::GEO_ID])?
+            geoms.inner_join(&metrics, [COL::GEO_ID], [COL::GEO_ID])?
         } else {
-            let metrics = metrics.await.map_err(anyhow::Error::from)??;
+            let metrics = metrics.await.map_err(anyhow::Error::from)?;
             debug!("metrics: {metrics:#?}");
             metrics
         };

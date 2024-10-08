@@ -1,11 +1,18 @@
+use std::collections::HashSet;
+#[cfg(feature = "cache")]
 use std::path::Path;
 
-use anyhow::Result;
 #[cfg(feature = "cache")]
 use anyhow::{anyhow, Context};
+use anyhow::{bail, Result};
 use data_request_spec::DataRequestSpec;
-use log::{debug, error};
+use geo::get_geometries;
+use itertools::Itertools;
+use log::debug;
+#[cfg(feature = "cache")]
+use log::error;
 use metadata::Metadata;
+use parquet::get_metrics_sql;
 use polars::frame::DataFrame;
 use search::{Params, SearchParams, SearchResults};
 
@@ -118,6 +125,32 @@ impl Popgetter {
         self.search(&params.search)
             .download(&self.config, &params.download)
             .await
+    }
+
+    pub async fn download_metrics_sql(&self, params: &Params) -> Result<String> {
+        let metric_requests = self.search(&params.search).to_metric_requests(&self.config);
+        get_metrics_sql(&metric_requests, None)
+    }
+
+    pub async fn download_geoms(&self, params: &Params) -> Result<DataFrame> {
+        let metric_requests = self.search(&params.search).to_metric_requests(&self.config);
+        let all_geom_files: HashSet<String> = metric_requests
+            .iter()
+            .map(|m| m.geom_file.clone())
+            .collect();
+        let bbox = params
+            .download
+            .region_spec
+            .first()
+            .and_then(|region_spec| region_spec.bbox().clone());
+        if all_geom_files.len().ne(&1) {
+            bail!(
+                "Exactly 1 geom file is currently supported, {} included in metric requests: {:?}",
+                all_geom_files.len(),
+                all_geom_files.into_iter().collect_vec().join(", ")
+            );
+        }
+        get_geometries(all_geom_files.iter().next().unwrap(), bbox).await
     }
 }
 

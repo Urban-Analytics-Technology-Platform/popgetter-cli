@@ -13,24 +13,57 @@ futures = { workspace = true }
 geo = { workspace = true }
 geojson = { workspace = true, optional = true }
 geozero = { workspace = true, features = ["with-csv", "with-geojson"] }
-httpmock = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
 nonempty = { workspace = true, features = ["serialize"] }
-polars = { workspace = true, features = ["lazy", "is_in", "http", "streaming", "parquet", "polars-io", "regex", "strings", "rows"] }
+polars = { workspace = true, default-features = false}
 regex = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true, default-features = false}
 wkb = { workspace = true }
 wkt = { workspace = true }
 
-[dev-dependencies]
+[target.'cfg(not(target_arch="wasm32"))'.dev-dependencies]
+httpmock = { workspace = true }
 tempfile = { workspace = true }
 
+[target.'cfg(target_arch="wasm32")'.dev-dependencies]
+wasm-bindgen-test = { version = "0.3" }
+
 [features]
-default = ["cache", "formatters"]
+default = ["cache", "formatters", "not_wasm"]
 cache = ["dep:dirs"]
 formatters = ["dep:geojson"]
+not_wasm = [
+    "tokio/full",
+    "polars/csv",
+    "polars/temporal",
+    "polars/lazy",
+    "polars/is_in",
+    "polars/dtype-time",
+    "polars/parquet",
+    "polars/regex",
+    "polars/strings",
+    "polars/rows",
+    "polars/http",
+    "polars/streaming",
+]
+wasm = [
+    "tokio/rt",
+    "tokio/macros",
+    "polars/csv",
+    "polars/temporal",
+    "polars/lazy",
+    "polars/is_in",
+    "polars/dtype-time",
+    "polars/parquet",
+    "polars/regex",
+    "polars/strings",
+    "polars/rows",
+    # "http" and "streaming" features do not compile to WASM due to dep "mio" that is introduced
+    # "polars/http",
+    # "polars/streaming"
+]

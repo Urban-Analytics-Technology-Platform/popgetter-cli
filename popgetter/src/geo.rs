@@ -1,6 +1,6 @@
 use crate::COL;
 use anyhow::{Context, Result};
-use flatgeobuf::{geozero, FeatureProperties, HttpFgbReader};
+use flatgeobuf::{FeatureProperties, HttpFgbReader};
 use geozero::ToWkt;
 use polars::{frame::DataFrame, prelude::NamedFrom, series::Series};
 use serde::{Deserialize, Serialize};
@@ -87,6 +87,8 @@ impl FromStr for BBox {
 }
 
 #[cfg(test)]
+// TODO: update for wasm32. "httpmock" does not build for wasm32 so only include for not wasm32
+#[cfg(not(target_arch = "wasm32"))]
 mod tests {
     use super::*;
     use ::geozero::{geojson::GeoJson, ColumnValue};
